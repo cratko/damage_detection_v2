@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Детекция повреждений + размеры</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin:0; padding:20px; }
+        .card { max-width: 900px; margin: 20px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        header { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 30px; text-align: center; }
+        h1 { margin:0; font-size: 2.2em; }
+        .content { padding: 40px; text-align: center; }
+        .dropzone {
+            border: 4px dashed #667eea;
+            border-radius: 16px;
+            padding: 60px;
+            background: #f8f9ff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .dropzone:hover { background: #e8eaff; }
+        .dropzone.dragover { background: #d0d8ff; border-color: #764ba2; transform: scale(1.02); }
+        .dropzone p { margin: 10px 0; font-size: 1.3em; color: #555; }
+        img { max-width: 100%; border-radius: 12px; margin: 20px 0; box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
+        .loading { color: #667eea; font-size: 1.4em; margin: 30px; display: none; }
+        footer { text-align: center; padding: 20px; color: #888; font-size: 0.9em; }
+        /* Скрываем input, но оставляем кликабельным */
+        input[type=file] {
+            opacity: 0;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100%; height: 100%;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <header>
+        <h1>Детекция повреждений автомобиля</h1>
+        <p>Загрузи фото — получи размеры дефектов в сантиметрах</p>
+    </header>
+    <div class="content">
+        <div class="dropzone" id="dropzone">
+            <p><strong>Нажми здесь или перетащи фото</strong></p>
+            <p>Поддерживаются JPG, PNG, WEBP</p>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <div id="loading" class="loading">
+            Обработка изображения...
+        </div>
+
+        <img id="original" src="" alt="Оригинал" style="display:none">
+        <img id="result" src="" alt="Результат с размерами" style="display:none">
+    </div>
+    <footer>FastAPI + Detectron2 PointRend Mask-R-CNN</footer>
+</div>
+<script>
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const originalImg = document.getElementById('original');
+    const resultImg = document.getElementById('result');
+    const loading = document.getElementById('loading');
+
+    // Флаг, чтобы не срабатывало дважды
+    let isProgrammaticClick = false;
+
+    // Клик по зоне — только если клик был НЕ по input
+    dropzone.addEventListener('click', (e) => {
+        // Если клик был по самому input — ничего не делаем (браузер сам откроет диалог)
+        if (e.target === fileInput || e.target.closest('input[type="file"]')) {
+            return;
+        }
+
+        // Иначе — это клик по пустому месту → открываем диалог вручную
+        isProgrammaticClick = true;
+        fileInput.click();
+    });
+
+    // Перехватываем открытие диалога
+    fileInput.addEventListener('click', (e) => {
+        if (isProgrammaticClick) {
+            isProgrammaticClick = false; // сбрасываем флаг
+            return; // разрешаем нормальное открытие
+        }
+        // Если юзер кликнул прямо по input — предотвращаем дублирование
+        e.stopPropagation();
+    });
+
+    // При выборе файла (через диалог или перетаскивание)
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+            handleFile(fileInput.files[0]);
+        }
+    });
+
+    // === Drag & Drop ===
+    ['dragover', 'dragenter'].forEach(evt => {
+        dropzone.addEventListener(evt, e => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+    });
+
+    ['dragleave', 'dragend'].forEach(evt => {
+        dropzone.addEventListener(evt, () => {
+            dropzone.classList.remove('dragover');
+        });
+    });
+
+    dropzone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            handleFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    // === Обработка файла ===
+    function handleFile(file) {
+        if (!file.type.startsWith('image/')) {
+            alert('Пожалуйста, выбери изображение!');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = e => {
+            originalImg.src = e.target.result;
+            originalImg.style.display = 'block';
+            resultImg.style.display = 'none';
+            loading.style.display = 'block';
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            fetch("/api/predict", {
+                method: "POST",
+                body: formData
+            })
+            .then(r => {
+                if (!r.ok) throw new Error("Ошибка сервера: " + r.status);
+                return r.blob();
+            })
+            .then(blob => {
+                resultImg.src = URL.createObjectURL(blob);
+                resultImg.style.display = 'block';
+                loading.style.display = 'none';
+            })
+            .catch(err => {
+                alert("Ошибка обработки: " + err.message);
+                loading.style.display = 'none';
+            });
+        };
+        reader.readAsDataURL(file);
+    }
+</script>
+</body>
+</html>
