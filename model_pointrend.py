@@ -11,7 +11,6 @@ from detectron2.data import MetadataCatalog, DatasetCatalog
 from detectron2.data.datasets import register_coco_instances
 from detectron2.projects import point_rend
 
-# Ваши утилиты
 import dataset_utils
 from calcs_v2 import calculate_and_draw_sizes
 
